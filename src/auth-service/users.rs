@@ -28,9 +28,8 @@ pub struct UsersImpl {
 
 impl Users for UsersImpl {
     fn create_user(&mut self, username: String, password: String) -> Result<(), String> {
-        // TODO: Check if username already exist. If so return an error.
         if self.username_to_user.contains_key(&username) {
-            return Err(String::from("Username already in use"))
+            return Err("Unable to create user. Username already exists.".to_owned());
         }
 
         let salt = SaltString::generate(&mut OsRng);
@@ -40,44 +39,39 @@ impl Users for UsersImpl {
             .map_err(|e| format!("Failed to hash password.\n{e:?}"))?
             .to_string();
 
-        let uuid = Uuid::new_v4().to_string();
-        let user: User = User {
-            user_uuid: uuid.clone(),
+        let user = User {
+            user_uuid: Uuid::new_v4().to_string(),
             username: username.clone(),
-            password: hashed_password
-        }; // Create new user with unique uuid and hashed password.
+            password: hashed_password,
+        };
 
-        // TODO: Add user to `username_to_user` and `uuid_to_user`.
-        self.username_to_user.insert(username.clone(), user.clone());
-        self.uuid_to_user.insert(uuid, user);
+
+        self.username_to_user.insert(username, user.clone());
+        self.uuid_to_user.insert(user.user_uuid.clone(), user);
 
         Ok(())
     }
 
     fn get_user_uuid(&self, username: String, password: String) -> Option<String> {
-        let user: &User = self.username_to_user.get(&username)?; // Retrieve `User` or return `None` is user can't be found.
+        let user = self.username_to_user.get(&username)?;
 
-        // Get user's password as `PasswordHash` instance. 
         let hashed_password = user.password.clone();
         let parsed_hash = PasswordHash::new(&hashed_password).ok()?;
 
-        // Verify passed in password matches user's password.
         let result = Pbkdf2.verify_password(password.as_bytes(), &parsed_hash);
 
-        // TODO: If the username and password passed in matches the user's username and password return the user's uuid.
-        if let Ok(res) = result {
-            return Some(user.user_uuid.clone())
+        if user.username == username && result.is_ok() {
+            return Some(user.user_uuid.clone());
         }
 
         None
     }
 
     fn delete_user(&mut self, user_uuid: String) {
-        // TODO: Remove user from `username_to_user` and `uuid_to_user`.
-        let user = self.uuid_to_user.get(&user_uuid);
-        if let Some(user) = user {
-            self.username_to_user.retain(|_, v| v.username != user.username);
-            self.uuid_to_user.retain(|k, _| *k != user_uuid);
+        if let Some(user) = self.uuid_to_user.get(&user_uuid) {
+            let user_uuid = user.user_uuid.clone();
+            self.username_to_user.remove(&user.username);
+            self.uuid_to_user.remove(&user_uuid);
         }
     }
 }
